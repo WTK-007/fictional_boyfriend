@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ImageGenerationClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
 import { getCharacterById } from '@/data/characters';
+import { ensureConversation, insertMessage } from '@/db/repo';
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,11 +38,45 @@ export async function POST(request: NextRequest) {
     const helper = client.getResponseHelper(response);
 
     if (helper.success && helper.imageUrls.length > 0) {
-      return NextResponse.json({
-        imageUri: helper.imageUrls[0],
-      });
+      const imageUri = helper.imageUrls[0];
+
+      if (uid) {
+        try {
+          const { conversation } = await ensureConversation(uid, characterId);
+          await insertMessage({
+            conversationId: conversation.id,
+            role: 'character',
+            type: 'image',
+            content: prompt,
+            imageUri,
+            imagePrompt: prompt,
+            imageStatus: 'done',
+          });
+        } catch (dbErr) {
+          console.error('Image persist error (non-blocking):', dbErr);
+        }
+      }
+
+      return NextResponse.json({ imageUri });
     } else {
       console.error('Image generation failed:', helper.errorMessages);
+
+      if (uid) {
+        try {
+          const { conversation } = await ensureConversation(uid, characterId);
+          await insertMessage({
+            conversationId: conversation.id,
+            role: 'character',
+            type: 'image',
+            content: prompt,
+            imagePrompt: prompt,
+            imageStatus: 'failed',
+          });
+        } catch (dbErr) {
+          console.error('Image persist error (non-blocking):', dbErr);
+        }
+      }
+
       return NextResponse.json(
         { error: '图片生成失败', imageUri: '' },
         { status: 200 }

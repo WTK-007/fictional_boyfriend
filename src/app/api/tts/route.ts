@@ -101,6 +101,7 @@ export async function POST(request: NextRequest) {
     );
     const audioUri = `data:audio/mp3;base64,${audioBuffer.toString('base64')}`;
 
+    // 音频暂不入库（等接入 R2 后只存 URL）。前端当次会话仍可播放。
     return NextResponse.json({ audioUri, audioSize: audioBuffer.length });
   } catch (error) {
     console.error('TTS API error:', error);

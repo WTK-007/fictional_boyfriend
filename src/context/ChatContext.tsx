@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
 import { ChatState, Character, Message } from '@/types/chat';
-import { parseReply } from '@/utils/parseReply';
+import { getOrCreateUid } from '@/lib/userId';
 
 interface ChatContextType {
   chatState: ChatState;
@@ -23,13 +23,36 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const isGeneratingRef = useRef(false);
 
-  const selectCharacter = useCallback((character: Character) => {
+  const selectCharacter = useCallback(async (character: Character) => {
     setChatState({
       character,
       messages: [],
-      isTyping: false,
+      isTyping: true, // 用 typing 状态先占位，避免空白闪烁
       isGeneratingImage: false,
     });
+
+    const uid = getOrCreateUid();
+    try {
+      const res = await fetch(
+        `/api/messages?uid=${encodeURIComponent(uid)}&characterId=${encodeURIComponent(character.id)}`,
+      );
+      const data = await res.json();
+      const history: Message[] = Array.isArray(data.messages) ? data.messages : [];
+      setChatState({
+        character,
+        messages: history,
+        isTyping: false,
+        isGeneratingImage: false,
+      });
+    } catch (err) {
+      console.error('Load history error:', err);
+      setChatState({
+        character,
+        messages: [],
+        isTyping: false,
+        isGeneratingImage: false,
+      });
+    }
   }, []);
 
   const sendMessage = useCallback(async (content: string) => {
@@ -38,7 +61,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
     isGeneratingRef.current = true;
 
-    // 1. 添加用户消息
+    const uid = getOrCreateUid();
+    const currentCharacter = chatState.character;
+
+    // 1. 乐观更新：用户消息立刻显示
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -47,9 +73,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       timestamp: Date.now(),
     };
 
-    const currentCharacter = chatState.character;
-    const prevMessages = chatState.messages;
-
     setChatState((prev) => ({
       ...prev,
       messages: [...prev.messages, userMessage],
@@ -57,26 +80,22 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }));
 
     try {
-      // 2. 调用 LLM
+      // 2. 调用 LLM（同时落库用户消息 + 角色回复）
       const chatResponse = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           characterId: currentCharacter.id,
-          messages: [...prevMessages, userMessage].map((msg) => ({
-            role: msg.role === 'character' ? 'assistant' : 'user',
-            content: msg.content,
-          })),
+          uid,
+          content,
         }),
       });
 
       const chatData = await chatResponse.json();
-      const reply: string = chatData.reply || '网络不太好，等一下再试试～';
+      const text: string = chatData.text || '网络不太好，等一下再试试～';
+      const imagePrompt: string | null = chatData.imagePrompt ?? null;
 
-      // 3. 解析回复
-      const { text, imagePrompt } = parseReply(reply);
-
-      // 4. 添加角色文字消息
+      // 3. 角色文字消息
       const characterMessage: Message = {
         id: `char-${Date.now()}`,
         role: 'character',
@@ -91,10 +110,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         isTyping: false,
       }));
 
-      // 5. 并行：生成语音 + 生成图片（如果有）
-      const uid = `user-${Date.now()}`;
-
-      // 语音生成
+      // 4. 并行：语音 + 图片
       fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -102,6 +118,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           text,
           speaker: currentCharacter.speaker,
           uid,
+          characterId: currentCharacter.id,
         }),
       })
         .then((res) => res.json())
@@ -125,7 +142,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           console.error('TTS error (non-blocking):', err);
         });
 
-      // 图片生成
       if (imagePrompt) {
         setChatState((prev) => ({ ...prev, isGeneratingImage: true }));
 
@@ -180,7 +196,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     } finally {
       isGeneratingRef.current = false;
     }
-  }, [chatState.character, chatState.messages]);
+  }, [chatState.character]);
 
   const resetChat = useCallback(() => {
     isGeneratingRef.current = false;
