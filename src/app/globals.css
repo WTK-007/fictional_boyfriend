@@ -329,33 +329,59 @@ body {
   transform: scaleX(1);
 }
 .btn-login {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 22px;
-  border-radius: 999px;
-  background: var(--ink);
-  color: var(--cream);
-  font-size: 14px;
+  gap: 6px;
+  padding: 4px 2px;
+  background: transparent;
+  color: var(--coral-deep);
+  font-size: 14.5px;
   letter-spacing: 0.04em;
-  transition:
-    transform 0.25s,
-    box-shadow 0.25s;
+  font-weight: 500;
+  transition: color 0.25s;
+}
+.btn-login::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 0;
+  height: 1.5px;
+  background: var(--coral);
+  transform: scaleX(1);
+  transform-origin: left;
+  transition: transform 0.3s;
 }
 .btn-login:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 22px -10px rgba(45, 28, 18, 0.5);
+  color: var(--coral-deep);
+}
+.btn-login:hover::after {
+  transform: scaleX(0);
+  transform-origin: right;
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 36px;
 }
 .landing-auth {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 22px;
+  padding-left: 36px;
+}
+.landing-auth::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1px;
+  height: 18px;
+  background: var(--line-strong);
+  transform: translateY(-50%);
 }
 .landing-auth-link {
   font-size: 14.5px;
@@ -390,7 +416,11 @@ body {
     gap: 12px;
   }
   .landing-auth {
-    gap: 10px;
+    gap: 14px;
+    padding-left: 0;
+  }
+  .landing-auth::before {
+    display: none;
   }
   .landing-auth-name {
     display: none;
