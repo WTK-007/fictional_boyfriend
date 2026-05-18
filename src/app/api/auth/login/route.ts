@@ -4,12 +4,14 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { setSessionCookie, verifyPassword } from '@/lib/auth';
+import { getClientIp, verifyTurnstileToken } from '@/lib/turnstile';
 
 export const runtime = 'nodejs';
 
 const bodySchema = z.object({
   email: z.string().trim().toLowerCase().email('邮箱格式不正确').max(254),
   password: z.string().min(1).max(128),
+  turnstileToken: z.string().min(1).max(2048).optional(),
 });
 
 export async function POST(request: Request) {
@@ -24,7 +26,13 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: '邮箱或密码格式不正确' }, { status: 400 });
   }
-  const { email, password } = parsed.data;
+  const { email, password, turnstileToken } = parsed.data;
+
+  const verify = await verifyTurnstileToken(turnstileToken, getClientIp(request));
+  if (!verify.success) {
+    console.warn('Turnstile verify failed:', verify.errorCodes);
+    return NextResponse.json({ error: '人机验证失败，请重试' }, { status: 403 });
+  }
 
   const rows = await db
     .select({

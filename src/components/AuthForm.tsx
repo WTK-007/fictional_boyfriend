@@ -57,7 +57,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   const turnstileRef = useRef<TurnstileInstance | null>(null);
 
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
-  const needsTurnstile = mode === 'register' && !!turnstileSiteKey;
+  const needsTurnstile = !!turnstileSiteKey;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
