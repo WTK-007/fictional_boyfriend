@@ -1,7 +1,41 @@
 import type { Metadata } from 'next';
+import {
+  Ma_Shan_Zheng,
+  Noto_Serif_SC,
+  Caveat,
+  DM_Serif_Display,
+} from 'next/font/google';
 import { Inspector } from 'react-dev-inspector';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 import './globals.css';
+
+const maShanZheng = Ma_Shan_Zheng({
+  weight: '400',
+  subsets: ['latin'],
+  variable: '--font-ma-shan',
+  display: 'swap',
+});
+
+const notoSerifSC = Noto_Serif_SC({
+  weight: ['400', '500', '700'],
+  subsets: ['latin'],
+  variable: '--font-noto-serif',
+  display: 'swap',
+});
+
+const caveat = Caveat({
+  weight: ['400', '500', '700'],
+  subsets: ['latin'],
+  variable: '--font-caveat',
+  display: 'swap',
+});
+
+const dmSerif = DM_Serif_Display({
+  weight: '400',
+  subsets: ['latin'],
+  variable: '--font-dm-serif',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: {
@@ -65,7 +99,10 @@ export default function RootLayout({
   const isDev = process.env.COZE_PROJECT_ENV === 'DEV';
 
   return (
-    <html lang="en">
+    <html
+      lang="zh-CN"
+      className={`${maShanZheng.variable} ${notoSerifSC.variable} ${caveat.variable} ${dmSerif.variable}`}
+    >
       <body className={`antialiased`}>
         {isDev && <Inspector />}
         <ServiceWorkerRegister />
