@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,10 +53,19 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [nickname, setNickname] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileInstance | null>(null);
+
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+  const needsTurnstile = mode === 'register' && !!turnstileSiteKey;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (submitting) return;
+    if (needsTurnstile && !turnstileToken) {
+      setError('请先完成人机验证');
+      return;
+    }
     setError(null);
     setSubmitting(true);
 
@@ -63,6 +73,9 @@ export function AuthForm({ mode }: AuthFormProps) {
       const body: Record<string, string> = { email, password };
       if (mode === 'register' && nickname.trim()) {
         body.nickname = nickname.trim();
+      }
+      if (needsTurnstile && turnstileToken) {
+        body.turnstileToken = turnstileToken;
       }
 
       const res = await fetch(copy.endpoint, {
@@ -74,6 +87,11 @@ export function AuthForm({ mode }: AuthFormProps) {
 
       if (!res.ok) {
         setError(data?.error || '操作失败，请重试');
+        // 失败后让用户重新过一次人机验证(token 只能用一次)
+        if (needsTurnstile) {
+          setTurnstileToken(null);
+          turnstileRef.current?.reset();
+        }
         return;
       }
 
@@ -87,6 +105,10 @@ export function AuthForm({ mode }: AuthFormProps) {
     } catch (err) {
       console.error('Auth submit error:', err);
       setError('网络异常，请稍后重试');
+      if (needsTurnstile) {
+        setTurnstileToken(null);
+        turnstileRef.current?.reset();
+      }
     } finally {
       setSubmitting(false);
     }
@@ -143,13 +165,30 @@ export function AuthForm({ mode }: AuthFormProps) {
             </div>
           )}
 
+          {needsTurnstile && (
+            <div className="flex justify-center">
+              <Turnstile
+                ref={turnstileRef}
+                siteKey={turnstileSiteKey!}
+                onSuccess={(token) => setTurnstileToken(token)}
+                onError={() => setTurnstileToken(null)}
+                onExpire={() => setTurnstileToken(null)}
+                options={{ theme: 'light' }}
+              />
+            </div>
+          )}
+
           {error && (
             <p className="text-sm text-destructive" role="alert">
               {error}
             </p>
           )}
 
-          <Button type="submit" className="w-full" disabled={submitting}>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={submitting || (needsTurnstile && !turnstileToken)}
+          >
             {submitting ? '处理中…' : copy.submit}
           </Button>
         </form>

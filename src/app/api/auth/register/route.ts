@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { hashPassword, setSessionCookie } from '@/lib/auth';
+import { getClientIp, verifyTurnstileToken } from '@/lib/turnstile';
 
 export const runtime = 'nodejs';
 
@@ -11,6 +12,7 @@ const bodySchema = z.object({
   email: z.string().trim().toLowerCase().email('邮箱格式不正确').max(254),
   password: z.string().min(6, '密码至少 6 位').max(128, '密码过长'),
   nickname: z.string().trim().min(1).max(50).optional(),
+  turnstileToken: z.string().min(1).max(2048).optional(),
 });
 
 export async function POST(request: Request) {
@@ -26,7 +28,13 @@ export async function POST(request: Request) {
     const message = parsed.error.issues[0]?.message ?? '参数校验失败';
     return NextResponse.json({ error: message }, { status: 400 });
   }
-  const { email, password, nickname } = parsed.data;
+  const { email, password, nickname, turnstileToken } = parsed.data;
+
+  const verify = await verifyTurnstileToken(turnstileToken, getClientIp(request));
+  if (!verify.success) {
+    console.warn('Turnstile verify failed:', verify.errorCodes);
+    return NextResponse.json({ error: '人机验证失败，请重试' }, { status: 403 });
+  }
 
   const existing = await db
     .select({ id: users.id })
