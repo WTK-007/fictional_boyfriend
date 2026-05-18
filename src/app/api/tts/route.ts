@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cleanTextForSpeech } from '@/utils/cleanText';
+import { uploadToR2 } from '@/lib/r2';
+import { ensureConversation, insertMessage } from '@/db/repo';
+
+export const runtime = 'nodejs';
 
 const TTS_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional';
 
 export async function POST(request: NextRequest) {
   try {
-    const { text, speaker, uid } = await request.json();
+    const { text, speaker, uid, characterId } = await request.json();
 
     if (!text || !speaker) {
       return NextResponse.json({ error: '缺少必要参数' }, { status: 400 });
@@ -99,9 +103,35 @@ export async function POST(request: NextRequest) {
     const audioBuffer = Buffer.concat(
       audioChunks.map(b64 => Buffer.from(b64, 'base64')),
     );
-    const audioUri = `data:audio/mp3;base64,${audioBuffer.toString('base64')}`;
 
-    // 音频暂不入库（等接入 R2 后只存 URL）。前端当次会话仍可播放。
+    // 上传到 R2,返回永久链接
+    let audioUri: string;
+    try {
+      const key = `audio/${characterId || 'unknown'}/${crypto.randomUUID()}.mp3`;
+      audioUri = await uploadToR2(audioBuffer, key, 'audio/mpeg');
+    } catch (uploadErr) {
+      console.error('R2 audio upload failed:', uploadErr);
+      return NextResponse.json({ error: '语音存储失败' }, { status: 200 });
+    }
+
+    // 落库:把这一条语音消息也持久化,刷新对话后还能播
+    if (uid && characterId) {
+      try {
+        const { conversation } = await ensureConversation(uid, characterId);
+        await insertMessage({
+          conversationId: conversation.id,
+          role: 'character',
+          type: 'voice',
+          content: cleanedText,
+          rawContent: text,
+          audioUri,
+          audioStatus: 'done',
+        });
+      } catch (dbErr) {
+        console.error('Audio persist error (non-blocking):', dbErr);
+      }
+    }
+
     return NextResponse.json({ audioUri, audioSize: audioBuffer.length });
   } catch (error) {
     console.error('TTS API error:', error);
