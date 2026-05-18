@@ -31,6 +31,8 @@ export const users = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     uid: varchar('uid', { length: 64 }).notNull(),
+    email: varchar('email', { length: 254 }),
+    passwordHash: text('password_hash'),
     nickname: varchar('nickname', { length: 50 }),
     avatarUrl: text('avatar_url'),
     deviceFingerprint: varchar('device_fingerprint', { length: 128 }),
@@ -40,6 +42,7 @@ export const users = pgTable(
   },
   (t) => ({
     uidIdx: uniqueIndex('users_uid_idx').on(t.uid),
+    emailIdx: uniqueIndex('users_email_idx').on(t.email),
     deviceIdx: index('users_device_idx').on(t.deviceFingerprint),
   }),
 );

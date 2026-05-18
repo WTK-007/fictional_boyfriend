@@ -3,12 +3,16 @@
 import { characters } from '@/data/characters';
 import { useChat } from '@/context/ChatContext';
 import Image from 'next/image';
+import { AuthHeader } from '@/components/AuthHeader';
 
 export default function CharacterSelect() {
   const { selectCharacter } = useChat();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-rose-50 to-purple-50 flex flex-col items-center justify-center p-4">
+      <div className="absolute top-4 right-4 z-10">
+        <AuthHeader />
+      </div>
       <div className="max-w-[900px] w-full">
         {/* 标题 */}
         <div className="text-center mb-8">
