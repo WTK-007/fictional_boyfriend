@@ -4,6 +4,24 @@ import { getCharacterById } from '@/data/characters';
 import { ensureConversation, getMessagesForChat, insertMessage } from '@/db/repo';
 import { parseReply } from '@/utils/parseReply';
 
+// 强制 LLM 输出为严格 JSON，前置一次显式的「这一轮要不要发图」判断
+const JSON_OUTPUT_SPEC = `## 输出格式（必须严格遵守）
+每次回复**只能**输出一个 JSON 对象，不要加任何解释、前后文字、Markdown 代码块包裹：
+
+{"text":"要对用户说的话","shouldSendImage":false,"imagePrompt":null}
+
+字段说明：
+- text: 你这一轮的回复文本（不要把图片描述放进来）
+- shouldSendImage: 布尔值。先判断这一轮是否触发了上面「发图规则」里的场景，触发了才填 true；没触发就 false。大多数轮次都应该是 false。
+- imagePrompt: 当 shouldSendImage=true 时，写一段详细的图片描述（必须包含你的外貌特征 + 画面风格 + 当前场景）；为 false 时填 null。
+
+示例：
+用户："今天好累啊"
+{"text":"辛苦啦～早点休息，水要记得喝","shouldSendImage":false,"imagePrompt":null}
+
+用户："想看你"
+{"text":"嗯...给你看一张，刚拍的","shouldSendImage":true,"imagePrompt":"一张温柔自拍，黑色微卷头发，银色细框眼镜，白衬衫，窗边自然光，日系清新风格，暖色调"}`;
+
 export async function POST(request: NextRequest) {
   try {
     const { characterId, uid, content } = await request.json();
@@ -43,7 +61,7 @@ export async function POST(request: NextRequest) {
     const client = new LLMClient(config, customHeaders);
 
     const llmMessages = [
-      { role: 'system' as const, content: character.systemPrompt },
+      { role: 'system' as const, content: `${character.systemPrompt}\n\n${JSON_OUTPUT_SPEC}` },
       ...textHistory,
     ];
 
