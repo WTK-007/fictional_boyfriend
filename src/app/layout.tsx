@@ -102,8 +102,9 @@ export default function RootLayout({
     <html
       lang="zh-CN"
       className={`${maShanZheng.variable} ${notoSerifSC.variable} ${caveat.variable} ${dmSerif.variable}`}
+      suppressHydrationWarning
     >
-      <body className={`antialiased`}>
+      <body className={`antialiased`} suppressHydrationWarning>
         {isDev && <Inspector />}
         <ServiceWorkerRegister />
         {children}
