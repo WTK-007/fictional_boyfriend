@@ -8,27 +8,30 @@ import { DailyLoveLetter } from '@/emails/DailyLoveLetter';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// 测试期收件箱被写死;域名 paperboyfriend.space 验证完成后,把 from 切回真实域名 + to 改成 userEmail
-const FROM = '纸片人男友 <onboarding@resend.dev>';
+const FROM = '纸片人男友 <hello@paperboyfriend.space>';
 const APP_URL = 'https://paperboyfriend.space';
 
-export async function sendWelcomeEmail(userName: string) {
-  await resend.emails.send({
+export async function sendWelcomeEmail(userEmail: string, userName: string) {
+  const { data, error } = await resend.emails.send({
     from: FROM,
-    to: 'vullnetleka429@gmail.com',
+    to: userEmail,
     subject: '你好呀,我是你的专属男友 💌',
     react: <WelcomeEmail userName={userName} />,
   });
+  if (error) throw new Error(`Resend error: ${error.name} - ${error.message}`);
+  return data?.id ?? null;
 }
 
 export async function sendDailyLoveLetter(userEmail: string, userName: string) {
   const loveLetter = await generateLoveLetter(userName);
-  await resend.emails.send({
+  const { data, error } = await resend.emails.send({
     from: FROM,
     to: userEmail,
     subject: `早安 ${userName},今天也想你了`,
     react: <DailyLoveLetter userName={userName} loveLetter={loveLetter} appUrl={APP_URL} />,
   });
+  if (error) throw new Error(`Resend error: ${error.name} - ${error.message}`);
+  return data?.id ?? null;
 }
 
 // 群发:某个用户失败不影响其他用户

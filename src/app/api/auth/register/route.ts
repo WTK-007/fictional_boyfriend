@@ -68,7 +68,7 @@ export async function POST(request: Request) {
 
   // 发送欢迎邮件：失败不影响注册结果，仅记日志
   try {
-    await sendWelcomeEmail(created.nickname ?? email.split('@')[0]);
+    await sendWelcomeEmail(email, created.nickname ?? email.split('@')[0]);
   } catch (err) {
     console.error('[register] sendWelcomeEmail failed:', {
       email,
