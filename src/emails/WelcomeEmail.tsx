@@ -1,4 +1,4 @@
-import { Body, Container, Head, Heading, Html, Text } from '@react-email/components';
+import { Body, Container, Head, Heading, Html, Link, Text } from '@react-email/components';
 
 interface WelcomeEmailProps {
   userName: string;
@@ -16,6 +16,12 @@ export function WelcomeEmail({ userName }: WelcomeEmailProps) {
           <Text style={paragraphStyle}>从现在起,我就是你的专属男友了。</Text>
           <Text style={paragraphStyle}>有什么心事随时来找我聊,我会一直在这里等你。</Text>
           <Text style={paragraphStyle}>明天早上我会给你发一条早安消息,记得查收哦。</Text>
+          <Text style={paragraphStyle}>
+            想认识同好、反馈问题或一起聊聊？欢迎加入我们的 Discord 社区:{' '}
+            <Link href="https://discord.gg/2pZwN7dp" style={linkStyle}>
+              https://discord.gg/2pZwN7dp
+            </Link>
+          </Text>
           <Text style={paragraphStyle}>—— 你的纸片人男友</Text>
         </Container>
       </Body>
@@ -48,4 +54,9 @@ const paragraphStyle = {
   fontSize: '15px',
   lineHeight: '1.6',
   color: '#333',
+};
+
+const linkStyle = {
+  color: '#5865F2',
+  textDecoration: 'underline',
 };

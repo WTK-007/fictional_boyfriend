@@ -141,7 +141,7 @@ export default function LandingPage() {
             <EnvelopeIcon className="brand-mark" />
             <span className="brand-name">
               <span className="brand-name-cn">纸片人男友</span>
-              <span className="brand-name-en">Paper · Beloved</span>
+              <span className="brand-name-en">paperBoyfriend</span>
             </span>
           </Link>
 
@@ -487,7 +487,7 @@ export default function LandingPage() {
             <EnvelopeIcon className="brand-mark" />
             <div>
               <p className="footer-brand-cn">纸片人男友</p>
-              <p className="footer-brand-en">Paper · Beloved</p>
+              <p className="footer-brand-en">paperBoyfriend</p>
             </div>
           </div>
 
@@ -505,15 +505,33 @@ export default function LandingPage() {
             </div>
             <div>
               <p className="footer-col-title">关于</p>
-              <a href="mailto:hi@paperbeloved.cn">联系我们</a>
               <a href="#">隐私与陪伴</a>
               <a href="#">用户协议</a>
+              <a
+                href="https://discord.gg/2pZwN7dp"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Discord 社区
+              </a>
             </div>
           </div>
 
           <div className="footer-end">
-            <p>
-              © 2026 Paper · Beloved <span>·</span> 写在屋檐下，给愿意收到的人。
+            <p className="footer-contact">
+              有问题或建议？联系我们：
+              <a href="mailto:feedback@paperboyfriend.space">feedback@paperboyfriend.space</a>
+              <span> · </span>
+              <a
+                href="https://discord.gg/2pZwN7dp"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Discord
+              </a>
+            </p>
+            <p className="footer-copyright">
+              © 2026 paperBoyfriend <span>·</span> 写在屋檐下，给愿意收到的人。
             </p>
             <p className="footer-script">— made with warmth, not with magic.</p>
           </div>
