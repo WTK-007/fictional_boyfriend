@@ -7,6 +7,7 @@ import {
 } from 'next/font/google';
 import { Inspector } from 'react-dev-inspector';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
+import CrispChat from '@/components/crisp-chat';
 import './globals.css';
 
 const maShanZheng = Ma_Shan_Zheng({
@@ -108,6 +109,7 @@ export default function RootLayout({
         {isDev && <Inspector />}
         <ServiceWorkerRegister />
         {children}
+        <CrispChat />
       </body>
     </html>
   );
