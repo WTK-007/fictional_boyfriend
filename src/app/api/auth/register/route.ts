@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { hashPassword, setSessionCookie } from '@/lib/auth';
+import { sendWelcomeEmail } from '@/lib/email';
 import { getClientIp, verifyTurnstileToken } from '@/lib/turnstile';
 
 export const runtime = 'nodejs';
@@ -64,6 +65,17 @@ export async function POST(request: Request) {
     });
 
   await setSessionCookie(created.id);
+
+  // 发送欢迎邮件：失败不影响注册结果，仅记日志
+  try {
+    await sendWelcomeEmail(created.nickname ?? email.split('@')[0]);
+  } catch (err) {
+    console.error('[register] sendWelcomeEmail failed:', {
+      email,
+      uid: created.uid,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return NextResponse.json({ user: created }, { status: 201 });
 }
