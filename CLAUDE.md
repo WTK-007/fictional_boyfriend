@@ -118,9 +118,9 @@ fictional_boyfriend/
 
 ```bash
 # —— 日常 ——
-pnpm dev          # 起开发服务器（next dev --port 5000）
+pnpm dev          # 起开发服务器（next dev --port 3000）
 pnpm build        # 生产构建
-pnpm start        # 起生产服务器（--port 5000）
+pnpm start        # 起生产服务器（--port 3000）
 
 # —— 静态检查（提交前必跑） ——
 pnpm lint         # ESLint
