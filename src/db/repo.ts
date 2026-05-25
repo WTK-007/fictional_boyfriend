@@ -18,9 +18,15 @@ export async function getOrCreateUser(uid: string): Promise<User> {
   const existing = await db.select().from(users).where(eq(users.uid, uid)).limit(1);
   if (existing[0]) return existing[0];
 
+  // 匿名 uid 用户(未走 BetterAuth 注册)填占位 email/nickname,保持 schema notNull 约束
+  // BetterAuth 注册路径会在 hook 里覆盖这两个字段
   const [created] = await db
     .insert(users)
-    .values({ uid })
+    .values({
+      uid,
+      email: `${uid}@anonymous.local`,
+      nickname: '游客',
+    })
     .onConflictDoNothing({ target: users.uid })
     .returning();
 

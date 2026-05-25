@@ -4,70 +4,50 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-
-interface MeUser {
-  id: string;
-  uid: string;
-  email: string | null;
-  nickname: string | null;
-}
+import { authClient } from '@/lib/auth-client';
 
 const UID_STORAGE_KEY = 'fb_user_uid';
 
 export function AuthHeader() {
   const router = useRouter();
-  const [user, setUser] = useState<MeUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: session, isPending } = authClient.useSession();
   const [loggingOut, setLoggingOut] = useState(false);
 
+  // session 拿到 uid 后同步到 localStorage,聊天 API 仍然用这个 uid
   useEffect(() => {
-    let cancelled = false;
-    fetch('/api/auth/me')
-      .then((res) => res.json())
-      .then((data) => {
-        if (cancelled) return;
-        const me: MeUser | null = data?.user ?? null;
-        setUser(me);
-        if (me?.uid && typeof window !== 'undefined') {
-          window.localStorage.setItem(UID_STORAGE_KEY, me.uid);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setUser(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (typeof window === 'undefined') return;
+    const uid = (session?.user as { uid?: string | null } | null | undefined)?.uid;
+    if (uid) {
+      window.localStorage.setItem(UID_STORAGE_KEY, uid);
+    }
+  }, [session]);
 
   const handleLogout = useCallback(async () => {
     if (loggingOut) return;
     setLoggingOut(true);
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await authClient.signOut();
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(UID_STORAGE_KEY);
       }
-      setUser(null);
       router.refresh();
     } finally {
       setLoggingOut(false);
     }
   }, [loggingOut, router]);
 
-  if (loading) {
+  if (isPending) {
     return <div className="h-9" aria-hidden />;
   }
+
+  const user = session?.user;
 
   return (
     <div className="flex items-center gap-2">
       {user ? (
         <>
           <span className="hidden text-sm text-muted-foreground sm:inline">
-            {user.nickname || user.email || '已登录'}
+            {user.name || user.email || '已登录'}
           </span>
           <Button
             variant="ghost"

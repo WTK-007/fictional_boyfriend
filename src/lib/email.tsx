@@ -5,6 +5,8 @@ import { db } from '@/db';
 import { users } from '@/db/schema';
 import { WelcomeEmail } from '@/emails/WelcomeEmail';
 import { DailyLoveLetter } from '@/emails/DailyLoveLetter';
+import { VerifyEmail } from '@/emails/VerifyEmail';
+import { ResetPasswordEmail } from '@/emails/ResetPasswordEmail';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -17,6 +19,36 @@ export async function sendWelcomeEmail(userEmail: string, userName: string) {
     to: userEmail,
     subject: '你好呀,我是你的专属男友 💌',
     react: <WelcomeEmail userName={userName} />,
+  });
+  if (error) throw new Error(`Resend error: ${error.name} - ${error.message}`);
+  return data?.id ?? null;
+}
+
+export async function sendVerificationEmail(
+  userEmail: string,
+  userName: string,
+  verifyUrl: string,
+) {
+  const { data, error } = await resend.emails.send({
+    from: FROM,
+    to: userEmail,
+    subject: '验证你的邮箱 · 纸片人男友',
+    react: <VerifyEmail userName={userName} verifyUrl={verifyUrl} />,
+  });
+  if (error) throw new Error(`Resend error: ${error.name} - ${error.message}`);
+  return data?.id ?? null;
+}
+
+export async function sendPasswordResetEmail(
+  userEmail: string,
+  userName: string,
+  resetUrl: string,
+) {
+  const { data, error } = await resend.emails.send({
+    from: FROM,
+    to: userEmail,
+    subject: '重置你的密码 · 纸片人男友',
+    react: <ResetPasswordEmail userName={userName} resetUrl={resetUrl} />,
   });
   if (error) throw new Error(`Resend error: ${error.name} - ${error.message}`);
   return data?.id ?? null;
@@ -58,10 +90,12 @@ export async function sendDailyLoveLetterToAll() {
     .where(isNotNull(users.email));
 
   // 2) 按 SEND_CONCURRENCY 分块并发发送
+  // 过滤掉匿名占位邮箱 (uid@anonymous.local),只发给真实邮箱
   let success = 0;
   let failure = 0;
-  const eligible = rows.filter((u): u is { email: string; nickname: string | null } =>
-    Boolean(u.email),
+  const eligible = rows.filter(
+    (u): u is { email: string; nickname: string } =>
+      Boolean(u.email) && !u.email.endsWith('@anonymous.local'),
   );
 
   for (let i = 0; i < eligible.length; i += SEND_CONCURRENCY) {

@@ -24,16 +24,18 @@ export const mediaTypeEnum = pgEnum('media_type', ['audio', 'image']);
 export const apiTypeEnum = pgEnum('api_type', ['chat', 'tts', 'image']);
 export const apiStatusEnum = pgEnum('api_status', ['success', 'failure', 'timeout']);
 
-// ---------- users ----------
+// ---------- users (BetterAuth user 表,通过 fields 映射 name→nickname / image→avatarUrl) ----------
 
 export const users = pgTable(
   'users',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     uid: varchar('uid', { length: 64 }).notNull(),
-    email: varchar('email', { length: 254 }),
+    email: varchar('email', { length: 254 }).notNull(),
+    emailVerified: boolean('email_verified').notNull().default(false),
+    // 仅保留用于 Phase 4 lazy 迁移:验证通过后会迁到 accounts.password,迁完可删
     passwordHash: text('password_hash'),
-    nickname: varchar('nickname', { length: 50 }),
+    nickname: varchar('nickname', { length: 50 }).notNull(),
     avatarUrl: text('avatar_url'),
     deviceFingerprint: varchar('device_fingerprint', { length: 128 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -44,6 +46,75 @@ export const users = pgTable(
     uidIdx: uniqueIndex('users_uid_idx').on(t.uid),
     emailIdx: uniqueIndex('users_email_idx').on(t.email),
     deviceIdx: index('users_device_idx').on(t.deviceFingerprint),
+  }),
+);
+
+// ---------- sessions (BetterAuth) ----------
+
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    token: text('token').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    ipAddress: varchar('ip_address', { length: 64 }),
+    userAgent: text('user_agent'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tokenIdx: uniqueIndex('sessions_token_idx').on(t.token),
+    userIdx: index('sessions_user_idx').on(t.userId),
+  }),
+);
+
+// ---------- accounts (BetterAuth: credential / google 等) ----------
+
+export const accounts = pgTable(
+  'accounts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    accountId: text('account_id').notNull(),
+    providerId: varchar('provider_id', { length: 64 }).notNull(),
+    accessToken: text('access_token'),
+    refreshToken: text('refresh_token'),
+    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
+    scope: text('scope'),
+    idToken: text('id_token'),
+    password: text('password'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userIdx: index('accounts_user_idx').on(t.userId),
+    providerAccountIdx: uniqueIndex('accounts_provider_account_idx').on(
+      t.providerId,
+      t.accountId,
+    ),
+  }),
+);
+
+// ---------- verifications (BetterAuth: 邮箱验证 / 密码重置 token) ----------
+
+export const verifications = pgTable(
+  'verifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    identifier: text('identifier').notNull(),
+    value: text('value').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    identifierIdx: index('verifications_identifier_idx').on(t.identifier),
   }),
 );
 
@@ -200,6 +271,16 @@ export const usersRelations = relations(users, ({ many }) => ({
   mediaAssets: many(mediaAssets),
   apiLogs: many(apiUsageLogs),
   characterStates: many(userCharacterState),
+  sessions: many(sessions),
+  accounts: many(accounts),
+}));
+
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, { fields: [sessions.userId], references: [users.id] }),
+}));
+
+export const accountsRelations = relations(accounts, ({ one }) => ({
+  user: one(users, { fields: [accounts.userId], references: [users.id] }),
 }));
 
 export const charactersRelations = relations(characters, ({ many }) => ({
@@ -251,3 +332,9 @@ export type ApiUsageLog = typeof apiUsageLogs.$inferSelect;
 export type NewApiUsageLog = typeof apiUsageLogs.$inferInsert;
 export type UserCharacterState = typeof userCharacterState.$inferSelect;
 export type NewUserCharacterState = typeof userCharacterState.$inferInsert;
+export type Session = typeof sessions.$inferSelect;
+export type NewSession = typeof sessions.$inferInsert;
+export type Account = typeof accounts.$inferSelect;
+export type NewAccount = typeof accounts.$inferInsert;
+export type Verification = typeof verifications.$inferSelect;
+export type NewVerification = typeof verifications.$inferInsert;
