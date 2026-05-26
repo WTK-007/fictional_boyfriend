@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, lt, sql } from 'drizzle-orm';
 import { db } from './index';
 import {
   conversations,
@@ -9,13 +9,24 @@ import {
   type User,
 } from './schema';
 
+// 一次最多拉多少条消息（前端首屏/翻页都用这个）
+export const DEFAULT_MESSAGE_PAGE_SIZE = 20;
+// 给 LLM 的上下文窗口（仅 text 类型）
+export const LLM_CONTEXT_WINDOW = 20;
+
 export async function getOrCreateUser(uid: string): Promise<User> {
   const existing = await db.select().from(users).where(eq(users.uid, uid)).limit(1);
   if (existing[0]) return existing[0];
 
+  // 匿名 uid 用户(未走 BetterAuth 注册)填占位 email/nickname,保持 schema notNull 约束
+  // BetterAuth 注册路径会在 hook 里覆盖这两个字段
   const [created] = await db
     .insert(users)
-    .values({ uid })
+    .values({
+      uid,
+      email: `${uid}@anonymous.local`,
+      nickname: '游客',
+    })
     .onConflictDoNothing({ target: users.uid })
     .returning();
 
@@ -78,31 +89,89 @@ export async function insertMessage(input: InsertMessageInput): Promise<Message>
   return created;
 }
 
+/**
+ * 找到 (uid, characterId) 对应的 conversationId,不存在返回 null。
+ * 不会创建,纯只读 — 用于翻页/列表接口。
+ */
+export async function findConversationId(
+  uid: string,
+  characterId: string,
+): Promise<string | null> {
+  const rows = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .innerJoin(users, eq(users.id, conversations.userId))
+    .where(and(eq(users.uid, uid), eq(conversations.characterId, characterId)))
+    .limit(1);
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * 拉一页消息(展示用)。按 id DESC 拿最近 N 条,再反转成"老→新"返回。
+ * - beforeId: 拿比这个 id 更老的消息(用于上滑加载更多)
+ * - 多返回一条用来判断 hasMore,接口层会把那条切掉
+ */
+export async function getMessagesPage(
+  conversationId: string,
+  options: { limit?: number; beforeId?: number } = {},
+): Promise<{ messages: Message[]; hasMore: boolean }> {
+  const limit = options.limit ?? DEFAULT_MESSAGE_PAGE_SIZE;
+  const whereClauses = [eq(messages.conversationId, conversationId)];
+  if (typeof options.beforeId === 'number') {
+    whereClauses.push(lt(messages.id, options.beforeId));
+  }
+
+  // 多拿 1 条用来判断是否还有更老的
+  const rows = await db
+    .select()
+    .from(messages)
+    .where(and(...whereClauses))
+    .orderBy(desc(messages.id))
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  // 反转回老→新,前端按时间顺序渲染
+  page.reverse();
+  return { messages: page, hasMore };
+}
+
+/**
+ * 给 LLM 的上下文：只取最近 N 条 text 类型,按老→新返回。
+ * 避免拉 voice/image 重复行,也避免长会话把整张表拉回来。
+ */
+export async function getRecentTextMessagesForLLM(
+  conversationId: string,
+  limit: number = LLM_CONTEXT_WINDOW,
+): Promise<Pick<Message, 'role' | 'content'>[]> {
+  const rows = await db
+    .select({ role: messages.role, content: messages.content })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.conversationId, conversationId),
+        eq(messages.type, 'text'),
+      ),
+    )
+    .orderBy(desc(messages.id))
+    .limit(limit);
+  return rows.reverse();
+}
+
+/**
+ * 兼容旧调用:拉首屏消息(最近 N 条)。
+ * 老接口语义是"全部消息按时间升序",这里改成"最近 N 条按时间升序"。
+ */
 export async function getMessagesForChat(
   uid: string,
   characterId: string,
-): Promise<Message[]> {
-  const userRows = await db.select().from(users).where(eq(users.uid, uid)).limit(1);
-  if (!userRows[0]) return [];
-
-  const convRows = await db
-    .select()
-    .from(conversations)
-    .where(
-      and(
-        eq(conversations.userId, userRows[0].id),
-        eq(conversations.characterId, characterId),
-      ),
-    )
-    .limit(1);
-  if (!convRows[0]) return [];
-
-  return db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, convRows[0].id))
-    .orderBy(asc(messages.createdAt), asc(messages.id));
+  options: { limit?: number; beforeId?: number } = {},
+): Promise<{ messages: Message[]; hasMore: boolean }> {
+  const conversationId = await findConversationId(uid, characterId);
+  if (!conversationId) return { messages: [], hasMore: false };
+  return getMessagesPage(conversationId, options);
 }
+
 
 export async function ensureConversation(uid: string, characterId: string) {
   const user = await getOrCreateUser(uid);

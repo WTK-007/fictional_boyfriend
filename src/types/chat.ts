@@ -34,4 +34,6 @@ export interface ChatState {
   messages: Message[];
   isTyping: boolean;       // 角色正在输入
   isGeneratingImage: boolean; // 正在生成图片
+  hasMoreMessages: boolean;   // 还有更老的消息可以加载
+  isLoadingMore: boolean;     // 正在加载更早的消息
 }

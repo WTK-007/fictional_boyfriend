@@ -1,21 +1,65 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import Image from 'next/image';
 import { useChat } from '@/context/ChatContext';
 import { Message } from '@/types/chat';
 import { ArrowLeft, Send, Loader2, Play, Pause, X, ImageOff } from 'lucide-react';
 
+const SCROLL_TOP_THRESHOLD = 60; // px,小于这个距离顶部就触发加载更多
+
 export default function ChatScreen() {
-  const { chatState, sendMessage, resetChat } = useChat();
+  const { chatState, sendMessage, loadMoreMessages, resetChat } = useChat();
   const [input, setInput] = useState('');
+  const mainRef = useRef<HTMLElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
+  // 翻页时保存"距离底部多少 px",拼接老消息后用它还原 scrollTop,避免跳动
+  const savedDistanceRef = useRef<number | null>(null);
+  // 跟踪最后一条消息 id,只在末尾新增时才自动滚到底
+  const prevLastIdRef = useRef<string | null>(null);
 
-  // 自动滚动到底部
+  // 滚到顶端 → 自动加载更多
+  const handleScroll = useCallback(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    if (
+      el.scrollTop < SCROLL_TOP_THRESHOLD &&
+      chatState.hasMoreMessages &&
+      !chatState.isLoadingMore
+    ) {
+      savedDistanceRef.current = el.scrollHeight - el.scrollTop;
+      void loadMoreMessages();
+    }
+  }, [chatState.hasMoreMessages, chatState.isLoadingMore, loadMoreMessages]);
+
+  // 老消息拼接完成后:还原"距离底部"的位置,paint 前同步完成,避免视觉跳动
+  useLayoutEffect(() => {
+    if (savedDistanceRef.current === null) return;
+    if (chatState.isLoadingMore) return; // 还在加载,等数据到位
+    const el = mainRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight - savedDistanceRef.current;
+    }
+    savedDistanceRef.current = null;
+  }, [chatState.messages, chatState.isLoadingMore]);
+
+  // 末尾新增消息时滚到底;翻页拼老消息时(savedDistanceRef 非空)跳过
   useEffect(() => {
+    const last = chatState.messages[chatState.messages.length - 1];
+    const lastId = last?.id ?? null;
+    if (lastId === prevLastIdRef.current) return;
+    prevLastIdRef.current = lastId;
+    if (savedDistanceRef.current !== null) return;
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatState.messages, chatState.isTyping]);
+  }, [chatState.messages]);
+
+  // typing 状态变化单独触发一次,让用户看到对方在打字
+  useEffect(() => {
+    if (chatState.isTyping && savedDistanceRef.current === null) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatState.isTyping]);
 
   const handleSend = () => {
     const text = input.trim();
@@ -64,7 +108,23 @@ export default function ChatScreen() {
       </header>
 
       {/* 聊天区域 */}
-      <main className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
+      <main
+        ref={mainRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-3 py-4 space-y-3"
+      >
+        {/* 顶部:加载更早消息提示 */}
+        {chatState.isLoadingMore && (
+          <div className="flex justify-center py-2">
+            <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+          </div>
+        )}
+        {!chatState.hasMoreMessages && chatState.messages.length > 0 && (
+          <div className="flex justify-center py-1">
+            <span className="text-xs text-gray-400">没有更早的消息了</span>
+          </div>
+        )}
+
         {chatState.messages.map((msg) => (
           <MessageBubble
             key={msg.id}

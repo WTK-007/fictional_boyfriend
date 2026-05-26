@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { LLMClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
 import { getCharacterById } from '@/data/characters';
-import { ensureConversation, getMessagesForChat, insertMessage } from '@/db/repo';
+import {
+  ensureConversation,
+  getRecentTextMessagesForLLM,
+  insertMessage,
+} from '@/db/repo';
 import { parseReply } from '@/utils/parseReply';
 
 // 强制 LLM 输出为严格 JSON，前置一次显式的「这一轮要不要发图」判断
@@ -45,16 +49,12 @@ export async function POST(request: NextRequest) {
       content: content.trim(),
     });
 
-    const allMessages = await getMessagesForChat(uid, characterId);
-
-    // 只用 text 类型构造 LLM 上下文（voice/image 是同一文本的展示拷贝，避免重复）
-    const textHistory = allMessages
-      .filter((m) => m.type === 'text')
-      .slice(-20)
-      .map((m) => ({
-        role: (m.role === 'character' ? 'assistant' : 'user') as 'user' | 'assistant',
-        content: m.content,
-      }));
+    // 直接在 SQL 里 limit + 过滤 text，避免长会话把整张表拉回来
+    const recentTexts = await getRecentTextMessagesForLLM(conversation.id);
+    const textHistory = recentTexts.map((m) => ({
+      role: (m.role === 'character' ? 'assistant' : 'user') as 'user' | 'assistant',
+      content: m.content,
+    }));
 
     const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
     const config = new Config();

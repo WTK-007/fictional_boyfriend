@@ -4,54 +4,109 @@ import React, { createContext, useContext, useState, useRef, useCallback } from 
 import { ChatState, Character, Message } from '@/types/chat';
 import { getOrCreateUid } from '@/lib/userId';
 
+const PAGE_SIZE = 20;
+
 interface ChatContextType {
   chatState: ChatState;
   selectCharacter: (character: Character) => void;
   sendMessage: (content: string) => void;
+  loadMoreMessages: () => Promise<void>;
   resetChat: () => void;
 }
+
+const initialState: ChatState = {
+  character: null,
+  messages: [],
+  isTyping: false,
+  isGeneratingImage: false,
+  hasMoreMessages: false,
+  isLoadingMore: false,
+};
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const [chatState, setChatState] = useState<ChatState>({
-    character: null,
-    messages: [],
-    isTyping: false,
-    isGeneratingImage: false,
-  });
+  const [chatState, setChatState] = useState<ChatState>(initialState);
 
   const isGeneratingRef = useRef(false);
+  // 防止并发翻页:同一时刻只允许一个 loadMore 在飞
+  const isLoadingMoreRef = useRef(false);
 
   const selectCharacter = useCallback(async (character: Character) => {
     setChatState({
+      ...initialState,
       character,
-      messages: [],
       isTyping: true, // 用 typing 状态先占位，避免空白闪烁
-      isGeneratingImage: false,
     });
 
     const uid = getOrCreateUid();
     try {
       const res = await fetch(
-        `/api/messages?uid=${encodeURIComponent(uid)}&characterId=${encodeURIComponent(character.id)}`,
+        `/api/messages?uid=${encodeURIComponent(uid)}&characterId=${encodeURIComponent(character.id)}&limit=${PAGE_SIZE}`,
       );
       const data = await res.json();
       const history: Message[] = Array.isArray(data.messages) ? data.messages : [];
+      const hasMore = Boolean(data.hasMore);
       setChatState({
+        ...initialState,
         character,
         messages: history,
-        isTyping: false,
-        isGeneratingImage: false,
+        hasMoreMessages: hasMore,
       });
     } catch (err) {
       console.error('Load history error:', err);
       setChatState({
+        ...initialState,
         character,
-        messages: [],
-        isTyping: false,
-        isGeneratingImage: false,
       });
+    }
+  }, []);
+
+  const loadMoreMessages = useCallback(async () => {
+    if (isLoadingMoreRef.current) return;
+    // 用函数式读取最新状态,避免 stale closure
+    let snapshot: ChatState | null = null;
+    setChatState((prev) => {
+      snapshot = prev;
+      return prev;
+    });
+    if (!snapshot) return;
+    const { character, messages, hasMoreMessages } = snapshot as ChatState;
+    if (!character || !hasMoreMessages || messages.length === 0) return;
+
+    // 找到当前最老的「真实库里的消息」id 作为 cursor
+    // 客户端乐观插入的 id 形如 user-/char-/voice-/img-/err-,跳过这些
+    const oldestRealId = (() => {
+      for (const m of messages) {
+        const n = Number(m.id);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+      return null;
+    })();
+    if (oldestRealId === null) return;
+
+    isLoadingMoreRef.current = true;
+    setChatState((prev) => ({ ...prev, isLoadingMore: true }));
+
+    const uid = getOrCreateUid();
+    try {
+      const res = await fetch(
+        `/api/messages?uid=${encodeURIComponent(uid)}&characterId=${encodeURIComponent(character.id)}&limit=${PAGE_SIZE}&before=${oldestRealId}`,
+      );
+      const data = await res.json();
+      const older: Message[] = Array.isArray(data.messages) ? data.messages : [];
+      const hasMore = Boolean(data.hasMore);
+      setChatState((prev) => ({
+        ...prev,
+        messages: [...older, ...prev.messages],
+        hasMoreMessages: hasMore,
+        isLoadingMore: false,
+      }));
+    } catch (err) {
+      console.error('Load more messages error:', err);
+      setChatState((prev) => ({ ...prev, isLoadingMore: false }));
+    } finally {
+      isLoadingMoreRef.current = false;
     }
   }, []);
 
@@ -200,17 +255,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const resetChat = useCallback(() => {
     isGeneratingRef.current = false;
-    setChatState({
-      character: null,
-      messages: [],
-      isTyping: false,
-      isGeneratingImage: false,
-    });
+    isLoadingMoreRef.current = false;
+    setChatState(initialState);
   }, []);
 
   return (
     <ChatContext.Provider
-      value={{ chatState, selectCharacter, sendMessage, resetChat }}
+      value={{ chatState, selectCharacter, sendMessage, loadMoreMessages, resetChat }}
     >
       {children}
     </ChatContext.Provider>

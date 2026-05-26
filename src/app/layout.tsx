@@ -8,6 +8,8 @@ import {
 import { Inspector } from 'react-dev-inspector';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 import CrispChat from '@/components/crisp-chat';
+import GoogleAnalytics from '@/components/google-analytics';
+import ClarityAnalytics from '@/components/clarity-analytics';
 import './globals.css';
 
 const maShanZheng = Ma_Shan_Zheng({
@@ -110,6 +112,8 @@ export default function RootLayout({
         <ServiceWorkerRegister />
         {children}
         <CrispChat />
+        <GoogleAnalytics />
+        <ClarityAnalytics />
       </body>
     </html>
   );
