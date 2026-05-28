@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { authClient } from '@/lib/auth-client';
+import { useUpgradeToPro } from '@/hooks/useUpgradeToPro';
 
 const UID_STORAGE_KEY = 'fb_user_uid';
 
@@ -12,6 +13,7 @@ export function AuthHeader() {
   const router = useRouter();
   const { data: session, isPending } = authClient.useSession();
   const [loggingOut, setLoggingOut] = useState(false);
+  const { isUpgrading, handleUpgrade } = useUpgradeToPro('/');
 
   // session 拿到 uid 后同步到 localStorage,聊天 API 仍然用这个 uid
   useEffect(() => {
@@ -49,6 +51,9 @@ export function AuthHeader() {
           <span className="hidden text-sm text-muted-foreground sm:inline">
             {user.name || user.email || '已登录'}
           </span>
+          <Button size="sm" onClick={handleUpgrade} disabled={isUpgrading}>
+            {isUpgrading ? '正在跳转…' : '升级 Pro'}
+          </Button>
           <Button
             variant="ghost"
             size="sm"
