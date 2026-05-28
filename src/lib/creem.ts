@@ -42,6 +42,41 @@ export interface CreemCheckoutSession {
   [key: string]: unknown;
 }
 
+// ---------- 查询单个订阅 (用于 redirect 反查) ----------
+
+// 官方 demo 在 success_url 落地后,从 query 拿 subscription_id 直接调这个接口反查,
+// 比 redirect URL 签名校验稳。Creem 返回的 subscription 对象包含 status / customer /
+// product / current_period_*_date / metadata 等字段。
+
+export interface CreemSubscription {
+  id: string;
+  status: string;
+  customer?: { id?: string; email?: string } | string;
+  product?: { id?: string } | string;
+  current_period_start_date?: string;
+  current_period_end_date?: string;
+  canceled_at?: string;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export async function getSubscription(subscriptionId: string): Promise<CreemSubscription> {
+  const apiKey = process.env.CREEM_API_KEY;
+  if (!apiKey) throw new Error('CREEM_API_KEY 未配置');
+
+  const res = await fetch(`${getCreemBaseUrl(apiKey)}/v1/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+    method: 'GET',
+    headers: { 'x-api-key': apiKey },
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Creem getSubscription failed ${res.status} ${res.statusText}: ${text}`);
+  }
+  return (await res.json()) as CreemSubscription;
+}
+
 export async function createCheckoutSession(
   input: CreateCheckoutInput,
 ): Promise<CreemCheckoutSession> {
@@ -270,11 +305,15 @@ export function extractSubscriptionFields(object: Record<string, unknown>): Extr
     status: pickString(object.status, subscriptionObj?.status),
     currentPeriodStart: pickDate(
       object.current_period_start,
+      object.current_period_start_date,
       subscriptionObj?.current_period_start,
+      subscriptionObj?.current_period_start_date,
     ),
     currentPeriodEnd: pickDate(
       object.current_period_end,
+      object.current_period_end_date,
       subscriptionObj?.current_period_end,
+      subscriptionObj?.current_period_end_date,
       object.next_billing_date,
     ),
     canceledAt: pickDate(object.canceled_at, subscriptionObj?.canceled_at),
