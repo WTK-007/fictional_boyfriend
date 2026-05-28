@@ -3,9 +3,11 @@ import { db } from './index';
 import {
   conversations,
   messages,
+  subscriptions,
   users,
   type Conversation,
   type Message,
+  type Subscription,
   type User,
 } from './schema';
 
@@ -178,3 +180,80 @@ export async function ensureConversation(uid: string, characterId: string) {
   const conversation = await getOrCreateConversation(user.id, characterId);
   return { user, conversation };
 }
+
+// ---------- Creem 订阅 ----------
+
+export type UpsertSubscriptionInput = {
+  userId: string;
+  creemSubscriptionId: string;
+  creemCustomerId?: string;
+  creemProductId: string;
+  status: Subscription['status'];
+  currentPeriodStart?: Date;
+  currentPeriodEnd?: Date;
+  canceledAt?: Date;
+  metadata?: Record<string, unknown>;
+  eventAt: Date;
+};
+
+// 按 creem_subscription_id upsert;只在新事件时间 > 已存事件时间才覆盖,防止乱序 webhook 把状态回退
+export async function upsertSubscriptionFromWebhook(input: UpsertSubscriptionInput): Promise<void> {
+  await db
+    .insert(subscriptions)
+    .values({
+      userId: input.userId,
+      creemSubscriptionId: input.creemSubscriptionId,
+      creemCustomerId: input.creemCustomerId ?? null,
+      creemProductId: input.creemProductId,
+      status: input.status,
+      currentPeriodStart: input.currentPeriodStart ?? null,
+      currentPeriodEnd: input.currentPeriodEnd ?? null,
+      canceledAt: input.canceledAt ?? null,
+      metadata: input.metadata ?? {},
+      lastEventAt: input.eventAt,
+    })
+    .onConflictDoUpdate({
+      target: subscriptions.creemSubscriptionId,
+      set: {
+        // userId 写入后不再覆盖(防止恶意 metadata 改绑)
+        creemCustomerId: sql`COALESCE(${input.creemCustomerId ?? null}, ${subscriptions.creemCustomerId})`,
+        creemProductId: input.creemProductId,
+        status: input.status,
+        currentPeriodStart: input.currentPeriodStart ?? null,
+        currentPeriodEnd: input.currentPeriodEnd ?? null,
+        canceledAt: input.canceledAt ?? null,
+        metadata: input.metadata ?? {},
+        lastEventAt: input.eventAt,
+        updatedAt: new Date(),
+      },
+      where: sql`${subscriptions.lastEventAt} IS NULL OR ${subscriptions.lastEventAt} < ${input.eventAt}`,
+    });
+}
+
+export async function findSubscriptionByCreemId(
+  creemSubscriptionId: string,
+): Promise<Subscription | null> {
+  const rows = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.creemSubscriptionId, creemSubscriptionId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+// 当前是否有有效的订阅(trialing / active)。给前端"是否会员"判定用
+export async function hasActiveSubscription(userId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: subscriptions.id })
+    .from(subscriptions)
+    .where(
+      and(
+        eq(subscriptions.userId, userId),
+        sql`${subscriptions.status} IN ('trialing', 'active', 'scheduled_cancel')`,
+        sql`(${subscriptions.currentPeriodEnd} IS NULL OR ${subscriptions.currentPeriodEnd} > NOW())`,
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+

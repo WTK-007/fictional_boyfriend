@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { authClient } from '@/lib/auth-client';
+import { GoogleOneTap } from '@/components/GoogleOneTap';
 
 type Mode = 'login' | 'register';
 
@@ -149,6 +150,7 @@ export function AuthForm({ mode }: AuthFormProps) {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <GoogleOneTap nextPath={nextPath} context={mode === 'register' ? 'signup' : 'signin'} />
       <div className="w-full max-w-sm space-y-6 rounded-2xl border bg-card p-6 shadow-sm">
         <div className="space-y-1 text-center">
           <h1 className="text-2xl font-semibold">{copy.title}</h1>

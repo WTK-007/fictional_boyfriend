@@ -23,6 +23,15 @@ export const imageStatusEnum = pgEnum('image_status', ['pending', 'done', 'faile
 export const mediaTypeEnum = pgEnum('media_type', ['audio', 'image']);
 export const apiTypeEnum = pgEnum('api_type', ['chat', 'tts', 'image']);
 export const apiStatusEnum = pgEnum('api_status', ['success', 'failure', 'timeout']);
+export const subscriptionStatusEnum = pgEnum('subscription_status', [
+  'trialing',
+  'active',
+  'past_due',
+  'paused',
+  'scheduled_cancel',
+  'canceled',
+  'expired',
+]);
 
 // ---------- users (BetterAuth user 表,通过 fields 映射 name→nickname / image→avatarUrl) ----------
 
@@ -264,6 +273,35 @@ export const userCharacterState = pgTable(
   }),
 );
 
+// ---------- subscriptions (Creem 支付订阅) ----------
+
+export const subscriptions = pgTable(
+  'subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    creemSubscriptionId: text('creem_subscription_id').notNull(),
+    creemCustomerId: text('creem_customer_id'),
+    creemProductId: text('creem_product_id').notNull(),
+    status: subscriptionStatusEnum('status').notNull(),
+    currentPeriodStart: timestamp('current_period_start', { withTimezone: true }),
+    currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
+    canceledAt: timestamp('canceled_at', { withTimezone: true }),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    // 用 Creem 事件时间避免乱序 webhook 把状态写回退
+    lastEventAt: timestamp('last_event_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    creemSubIdx: uniqueIndex('subscriptions_creem_sub_idx').on(t.creemSubscriptionId),
+    userStatusIdx: index('subscriptions_user_status_idx').on(t.userId, t.status),
+    customerIdx: index('subscriptions_customer_idx').on(t.creemCustomerId),
+  }),
+);
+
 // ---------- Relations ----------
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -273,6 +311,11 @@ export const usersRelations = relations(users, ({ many }) => ({
   characterStates: many(userCharacterState),
   sessions: many(sessions),
   accounts: many(accounts),
+  subscriptions: many(subscriptions),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  user: one(users, { fields: [subscriptions.userId], references: [users.id] }),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -338,3 +381,5 @@ export type Account = typeof accounts.$inferSelect;
 export type NewAccount = typeof accounts.$inferInsert;
 export type Verification = typeof verifications.$inferSelect;
 export type NewVerification = typeof verifications.$inferInsert;
+export type Subscription = typeof subscriptions.$inferSelect;
+export type NewSubscription = typeof subscriptions.$inferInsert;

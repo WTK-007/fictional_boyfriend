@@ -2,9 +2,20 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { characters } from '@/data/characters';
 import { LandingAuth } from '@/components/landing/LandingAuth';
+import { GoogleOneTap } from '@/components/GoogleOneTap';
+import { useUpgradeToPro } from '@/hooks/useUpgradeToPro';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 const benefits = [
   {
@@ -84,7 +95,7 @@ const pricing = [
     price: '¥39',
     unit: '/ 月',
     features: ['不限文字 · 不限语音', '解锁全部角色与音色', '主动发起话题 / 自拍', '永久对话记忆', '专属人格微调'],
-    cta: '14 天免费试用',
+    cta: '升级 Pro',
     highlighted: true,
     ribbon: '最受欢迎',
   },
@@ -101,6 +112,23 @@ const pricing = [
 
 export default function LandingPage() {
   const sectionsRef = useRef<HTMLElement[]>([]);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { isUpgrading, handleUpgrade } = useUpgradeToPro('/#pricing');
+  const [paymentDialog, setPaymentDialog] = useState<{ status: string; checkoutId: string } | null>(
+    null,
+  );
+
+  // Creem 回跳: /?payment=success&status=ok|unverified|invalid_signature
+  useEffect(() => {
+    if (searchParams.get('payment') !== 'success') return;
+    setPaymentDialog({
+      status: searchParams.get('status') ?? 'ok',
+      checkoutId: searchParams.get('checkout_id') ?? '',
+    });
+    // 清掉 URL query,刷新不会再次弹窗
+    router.replace('/', { scroll: false });
+  }, [searchParams, router]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -133,6 +161,7 @@ export default function LandingPage() {
   return (
     <div className="landing-root">
       <BackgroundDecor />
+      <GoogleOneTap nextPath="/chat" context="signin" />
 
       {/* ============== 1. HEADER ============== */}
       <header className="landing-header">
@@ -466,14 +495,20 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <Link
-                  href="/chat"
-                  className={
-                    p.highlighted ? 'btn-primary price-btn' : 'btn-secondary price-btn'
-                  }
-                >
-                  {p.cta}
-                </Link>
+                {p.highlighted ? (
+                  <button
+                    type="button"
+                    onClick={handleUpgrade}
+                    disabled={isUpgrading}
+                    className="btn-primary price-btn"
+                  >
+                    {isUpgrading ? '正在跳转...' : p.cta}
+                  </button>
+                ) : (
+                  <Link href="/chat" className="btn-secondary price-btn">
+                    {p.cta}
+                  </Link>
+                )}
               </article>
             ))}
           </div>
@@ -537,7 +572,69 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      <PaymentSuccessDialog
+        open={paymentDialog !== null}
+        status={paymentDialog?.status ?? 'ok'}
+        checkoutId={paymentDialog?.checkoutId ?? ''}
+        onClose={() => setPaymentDialog(null)}
+      />
     </div>
+  );
+}
+
+function PaymentSuccessDialog({
+  open,
+  status,
+  checkoutId,
+  onClose,
+}: {
+  open: boolean;
+  status: string;
+  checkoutId: string;
+  onClose: () => void;
+}) {
+  const isOk = status === 'ok';
+  const title = isOk
+    ? '付费成功 🎉'
+    : status === 'invalid_signature'
+      ? '链接校验未通过'
+      : '订单已收到,正在确认';
+  const description = isOk
+    ? '会员权益正在为你开通,马上就能享受完整体验。'
+    : status === 'invalid_signature'
+      ? '回跳链接的签名异常,可能被改写过。请稍候,Creem 会通过 webhook 二次确认你的订单。'
+      : '我们已收到 Creem 的回跳,但服务端尚未完成校验,权益将在 webhook 到达后自动开通。';
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        {checkoutId ? (
+          <p className="break-all text-xs text-muted-foreground">
+            订单号: <span className="font-mono">{checkoutId}</span>
+          </p>
+        ) : null}
+        <DialogFooter className="gap-2 sm:gap-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-border bg-background px-5 py-2 text-sm font-medium text-foreground hover:bg-muted"
+          >
+            留在首页
+          </button>
+          <Link
+            href="/chat"
+            className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+          >
+            去聊天
+          </Link>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
