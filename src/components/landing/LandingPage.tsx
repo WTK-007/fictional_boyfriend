@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useEffect, useRef } from 'react';
 import { characters } from '@/data/characters';
 import { LandingAuth } from '@/components/landing/LandingAuth';
+import { GoogleOneTap } from '@/components/GoogleOneTap';
 
 const benefits = [
   {
@@ -133,6 +134,7 @@ export default function LandingPage() {
   return (
     <div className="landing-root">
       <BackgroundDecor />
+      <GoogleOneTap nextPath="/chat" context="signin" />
 
       {/* ============== 1. HEADER ============== */}
       <header className="landing-header">
