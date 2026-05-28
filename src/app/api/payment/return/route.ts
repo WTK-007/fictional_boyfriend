@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pickRedirectParams, verifyRedirectSignature } from '@/lib/creem';
+import { debugRedirectSignature, pickRedirectParams } from '@/lib/creem';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,16 +27,21 @@ export async function GET(request: NextRequest) {
   }
 
   const params = pickRedirectParams(url.searchParams);
-  const isValid = verifyRedirectSignature(params, apiKey);
+  const debug = debugRedirectSignature(params, apiKey);
 
-  if (!isValid) {
-    console.warn('[creem-return] 签名校验失败', {
-      checkoutId: params.checkout_id,
-      hasSignature: Boolean(params.signature),
+  if (!debug.match) {
+    // 详细日志:把 Creem 实际拼上来的所有 key、我们构造的 sign 串、双边签名都打出来。
+    // 不含 secret,可安全留 console。失败时务必看这里。
+    console.warn('[creem-return] 签名校验失败 - 调试快照', {
+      sortedKeys: debug.sortedKeys,
+      payload: debug.payload,
+      expected: debug.expectedSignature,
+      received: debug.receivedSignature,
+      allParams: params.all,
     });
     return redirect('/?payment=success&status=invalid_signature');
   }
 
-  const checkoutId = params.checkout_id ?? '';
+  const checkoutId = params.all.checkout_id ?? '';
   return redirect(`/?payment=success&status=ok&checkout_id=${encodeURIComponent(checkoutId)}`);
 }

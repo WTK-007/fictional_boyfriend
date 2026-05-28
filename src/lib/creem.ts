@@ -78,52 +78,76 @@ export async function createCheckoutSession(
 
 // ---------- success_url 回跳签名校验 ----------
 
-// 文档: Creem 把以下参数拼到 success_url 上,并附加 signature 字段。
+// 文档: https://docs.creem.io/features/checkout/checkout-api
 //   signature = HMAC-SHA256(sorted "key=value&..." 串, API key)
-// 注意:
-//   1. null / undefined / 空串字段必须从参与签名的字符串里剔除
-//   2. 剩余字段按字典序排序
-//   3. 比较时用 timingSafeEqual 避免时序攻击
+// 实现说明:
+//   1. 用 URLSearchParams 拿到 Creem 实际拼上来的全部参数(不再硬编码白名单),
+//      因为 Creem 实际可能比文档表格多塞 mode / request_id 等字段
+//   2. 剔除 signature 自身 + 任何 null/空串
+//   3. 按 key 字典序 sort,join 成 "key=value&key=value"
+//   4. timingSafeEqual 比较
 
-const REDIRECT_PARAM_KEYS = [
-  'checkout_id',
-  'order_id',
-  'customer_id',
-  'subscription_id',
-  'product_id',
-  'request_id',
-] as const;
-
-export type RedirectParamKey = (typeof REDIRECT_PARAM_KEYS)[number];
-export type RedirectParams = Partial<Record<RedirectParamKey, string | null | undefined>> & {
-  signature?: string | null;
+export type RedirectParams = {
+  // 全量 query (含 signature)
+  all: Record<string, string>;
+  signature: string | null;
 };
 
 export function pickRedirectParams(searchParams: URLSearchParams): RedirectParams {
-  const out: RedirectParams = {
+  const all: Record<string, string> = {};
+  for (const [k, v] of searchParams.entries()) {
+    all[k] = v;
+  }
+  return {
+    all,
     signature: searchParams.get('signature'),
   };
-  for (const key of REDIRECT_PARAM_KEYS) {
-    out[key] = searchParams.get(key);
-  }
-  return out;
+}
+
+// 把要参与签名的参数拼成 Creem 期望的字符串,返回 { payload, sortedKeys }
+// 抽出来方便调试日志
+export function buildRedirectSignaturePayload(all: Record<string, string>): {
+  payload: string;
+  sortedKeys: string[];
+} {
+  const filtered = Object.entries(all)
+    .filter(([k, v]) => k !== 'signature' && v != null && v !== '')
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return {
+    payload: filtered.map(([k, v]) => `${k}=${v}`).join('&'),
+    sortedKeys: filtered.map(([k]) => k),
+  };
 }
 
 export function verifyRedirectSignature(params: RedirectParams, apiKey: string): boolean {
-  const signature = params.signature;
-  if (!signature) return false;
-
-  const filtered: Array<[string, string]> = [];
-  for (const key of REDIRECT_PARAM_KEYS) {
-    const v = params[key];
-    if (v != null && v !== '') filtered.push([key, v]);
-  }
-  filtered.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-
-  const payload = filtered.map(([k, v]) => `${k}=${v}`).join('&');
+  if (!params.signature) return false;
+  const { payload } = buildRedirectSignaturePayload(params.all);
   const expected = crypto.createHmac('sha256', apiKey).update(payload).digest('hex');
+  return timingSafeHexEqual(params.signature, expected);
+}
 
-  return timingSafeHexEqual(signature, expected);
+// 给一对 (params, apiKey),返回一份调试快照(不含 secret)。用于排查签名失败。
+export function debugRedirectSignature(
+  params: RedirectParams,
+  apiKey: string,
+): {
+  sortedKeys: string[];
+  payload: string;
+  expectedSignature: string;
+  receivedSignature: string | null;
+  match: boolean;
+} {
+  const { payload, sortedKeys } = buildRedirectSignaturePayload(params.all);
+  const expected = crypto.createHmac('sha256', apiKey).update(payload).digest('hex');
+  return {
+    sortedKeys,
+    payload,
+    expectedSignature: expected,
+    receivedSignature: params.signature,
+    match: params.signature
+      ? timingSafeHexEqual(params.signature, expected)
+      : false,
+  };
 }
 
 // ---------- webhook 签名校验 ----------
